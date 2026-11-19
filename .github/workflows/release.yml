@@ -44,7 +44,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Decode signing keystore
         # 把 base64 编码的 keystore 文件还原成 .jks
