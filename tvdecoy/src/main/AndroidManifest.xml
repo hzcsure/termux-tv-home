@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 仅 BOOT_COMPLETED 需要此权限；SCREEN_ON / USER_PRESENT 不需要 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 方案 B：悬浮窗诱饵（DecoyService）所需。
+         需先 adb shell appops set com.hzc.tvdecoy SYSTEM_ALERT_WINDOW allow -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.DecoyTransparent">
+
+        <!--
+            透明栈顶 Activity（前台诱饵）。由 TVHome 的 LauncherActivity 在 onResume
+            后延迟一小段拉起（默认 200ms，可用 Termux HOME 下的 ~/.tvdecoy_delay
+            覆盖，单位秒）：FLAG_ACTIVITY_NEW_TASK | SINGLE_TOP，按 affinity 复用
+            诱饵自己的 task，避免每次重挂都堆一个新 task。
+
+            2026-09-16 在 MiTV_ASTP0 / Android 9 上的实测定论：
+            - 小米 PMS 的 "current" 按【栈顶 resumed Activity】判定，与可见窗口 /
+              overlay 无关（TYPE_APPLICATION_OVERLAY 悬浮窗实测挡不住 kill）
+              ⇒ 必须由 Activity 占位。
+            - 必须独立包名 com.hzc.tvdecoy：PMS 落点是 forceStopPackage package:<pkg>，
+              按包名杀；同包名 ⇒ 同 UID 同 cgroup 一起死，保护在数学上无效。
+            - 窗口必须可聚焦（不能加 FLAG_NOT_FOCUSABLE）：不可聚焦时系统仍把本 app
+              当作 mFocusedApp，但 FocusedWindow 停在 null 且不会回退到其它 app 的
+              窗口，任意按键触发 InputDispatcher 5s 超时 → ANR → 诱饵自杀。
+            - 「焦点穿透回 TVHome」已被实测否决：即便 TVHome 窗口可见
+              （mViewVisibility=0x0 mObscured=false），焦点搜索也不跨 app 回退；
+              塞进同一 task 同样无效（home stack 不接受外来 Activity）。
+              ⇒ 最终方案是应用层按键转发：本 Activity 持焦点，把按键语义广播给
+              TVHome（见 DecoyActivity.dispatchKeyEvent）。
+            - 已实测：不再声明 singleInstance / 独立 taskAffinity —— 本 Activity
+              始终另起 task，但下方 TVHome 窗口仍正常绘制，不影响用户观感。
+        -->
+        <activity
+            android:name=".DecoyActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:stateNotNeeded="true"
+            android:theme="@style/Theme.DecoyTransparent">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 方案 B：悬浮窗诱饵。不启动任何 Activity，只对屏幕挂一个
+             NOT_FOCUSABLE + NOT_TOUCHABLE 的 1x1 透明 overlay，
+             理论上完全不影响 TVHome 的输入。用于验证「current 前台应用」
+             到底按 Activity 栈顶还是按可见窗口判定。 -->
+        <service
+            android:name=".DecoyService"
+            android:exported="true" />
+
+        <!-- 开机 / 解锁 / 亮屏 时自启，把诱饵重新顶到前台 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.SCREEN_ON" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

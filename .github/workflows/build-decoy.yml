@@ -1,0 +1,58 @@
+# ============================================================================
+# Build TV Decoy (透明前台诱饵 app)
+# 触发: 分支推送且改动 tvdecoy/**、本 workflow 或共享构建配置时自动构建
+#       （tag 推送不触发：paths 对 tag 不求值，见下方 branches 注释）
+#       也支持手动 workflow_dispatch
+# 产出: debug 签名 APK（可直接 adb install 到 TV）
+# 说明: 复用 termux CI runner 预装的 JDK17 + Android SDK，无需本地编译环境
+# ============================================================================
+
+name: Build TV Decoy
+
+on:
+  push:
+    # 只响应分支推送：定义 branches 即把 tag 事件排除（tag 推送不评估 paths，
+    # 否则每次打 tag 都会白跑一次 —— 发版解耦见 release.yml）
+    branches: [ '**' ]
+    paths:
+      - 'tvdecoy/**'
+      - '.github/workflows/build-decoy.yml'
+      # 共享构建配置：改这些也可能连带打坏 tvdecoy 的构建（尤其 AGP / wrapper 版本）
+      # 注意 paths 是"整段匹配、从仓库根起算"：'build.gradle' 只匹配根文件，不会匹配 app/build.gradle
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/wrapper/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build decoy APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew :tvdecoy:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvdecoy-apk
+          path: tvdecoy/build/outputs/apk/debug/*.apk
+          retention-days: 30
