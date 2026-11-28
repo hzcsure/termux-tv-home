@@ -47,7 +47,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # 版本号只有一个来源：tag（或手动输入的 version）。
       # versionCode 由三段式算出 10000*MAJOR + 100*MINOR + PATCH，随 tag 单调递增，
