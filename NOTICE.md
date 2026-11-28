@@ -18,6 +18,7 @@ commit `d22ea57`.
 | `.github/workflows/release.yml` | Custom release pipeline: downloads prebuilt offline `.deb` bundles, two-ABI split APKs. |
 | `.github/workflows/release-android5.yml` | Added. Builds the `apt-android-5` variant (bootstrap `2022.04.28-r6`) for Android 5.0–6.0, triggered by `a5-v*` tags or manually. |
 | `.github/workflows/build-decoy.yml` | Added. Builds the `tvdecoy` module. |
+| `.github/workflows/build-decoy-release.yml` | Added. Publishes a `tvdecoy` release APK to GitHub Releases when a `decoy-v*.*.*` tag is pushed; version name/code are derived from the tag and asserted against the built APK. |
 
 ## Signing
 

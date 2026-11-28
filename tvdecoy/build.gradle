@@ -11,8 +11,10 @@ android {
         applicationId 'com.hzc.tvdecoy'
         minSdk 21
         targetSdk 33
-        versionCode 1
-        versionName '1.0.0'
+        // CI 打 tag 时用 -PdecoyVersionName=1.2.3 -PdecoyVersionCode=10203 覆盖，
+        // 保证产物版本号与 tag 严格一致；本地直接构建则走下面的默认值。
+        versionCode (project.findProperty('decoyVersionCode') ?: '1').toInteger()
+        versionName (project.findProperty('decoyVersionName') ?: '1.0.0')
     }
 
     // 用 debug 密钥给 release 变体签名，保证 `./gradlew assembleRelease`（termux 发布时

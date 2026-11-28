@@ -5,6 +5,8 @@
 #       也支持手动 workflow_dispatch
 # 产出: debug 签名 APK（可直接 adb install 到 TV）
 # 说明: 复用 termux CI runner 预装的 JDK17 + Android SDK，无需本地编译环境
+# 发版: 打 decoy-v*.*.* tag 走 build-decoy-release.yml（产出 release 变体 + GitHub Release），
+#       本文件只负责分支改动时的回归构建。
 # ============================================================================
 
 name: Build TV Decoy
