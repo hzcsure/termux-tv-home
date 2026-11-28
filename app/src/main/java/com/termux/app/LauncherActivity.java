@@ -14,6 +14,7 @@ import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
@@ -122,6 +123,13 @@ public class LauncherActivity extends Activity implements ServiceConnection {
      */
     private static final String DECOY_RELAY_ACTION = "com.hzc.tvdecoy.KEY";
 
+    /**
+     * 纯 TV 应用（爱奇艺、当贝、云视听等）通常只声明这个 category，不声明
+     * CATEGORY_LAUNCHER。只查 LAUNCHER 会让它们装上后桌面上看不到图标。
+     * 写成字面量而非 Intent 常量，避免个别 compileSdk 上取不到该字段。
+     */
+    private static final String CATEGORY_LEANBACK = "android.intent.category.LEANBACK_LAUNCHER";
+
     // Special marker in order string for Terminal tile
     private static final String TERMINAL_MARKER = "##TERMINAL##";
 
@@ -185,6 +193,35 @@ public class LauncherActivity extends Activity implements ServiceConnection {
     };
     private boolean relayRegistered;
 
+    /**
+     * 应用安装/卸载/更新/启停时重建网格。
+     *
+     * 必须用 onCreate 常驻注册、而不是 onResume/onPause 配对：诱饵顶上栈顶后
+     * TVHome 一直是 paused 状态（实测 mLastPausedActivity=HomeLauncher），
+     * 若在 onPause 反注册，装完应用这个“看起来在前台”的桌面根本收不到广播。
+     */
+    private final BroadcastReceiver packageChangeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            boolean wanted = Intent.ACTION_PACKAGE_ADDED.equals(action)
+                    || Intent.ACTION_PACKAGE_REMOVED.equals(action)
+                    || Intent.ACTION_PACKAGE_CHANGED.equals(action)
+                    || Intent.ACTION_PACKAGE_REPLACED.equals(action);
+            if (!wanted) return;
+            // 覆盖安装会先发 REMOVED(replacing=true) 再发 ADDED，跳过前半段避免图标闪一下
+            if (Intent.ACTION_PACKAGE_REMOVED.equals(action)
+                    && intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
+            Uri data = intent.getData();
+            String pkg = data == null ? null : data.getSchemeSpecificPart();
+            if (getPackageName().equals(pkg)) return;   // 自己升级不重建网格
+            Logger.logInfo(LOG_TAG, "package changed: " + action + " " + pkg);
+            reloadAppsKeepFocus();
+        }
+    };
+    private boolean pkgReceiverRegistered;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -218,6 +255,20 @@ public class LauncherActivity extends Activity implements ServiceConnection {
         } catch (Exception e) {
             Logger.logWarn(LOG_TAG, "register decoy relay failed: " + e.getMessage());
         }
+
+        // 新装/卸载/更新应用后即时重建网格（常驻注册，见 packageChangeReceiver 注释）
+        try {
+            IntentFilter pkgFilter = new IntentFilter();
+            pkgFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
+            pkgFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+            pkgFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+            pkgFilter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+            pkgFilter.addDataScheme("package");
+            registerReceiver(packageChangeReceiver, pkgFilter);
+            pkgReceiverRegistered = true;
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "register package receiver failed: " + e.getMessage());
+        }
     }
 
     @Override
@@ -242,6 +293,10 @@ public class LauncherActivity extends Activity implements ServiceConnection {
             try { unregisterReceiver(decoyKeyRelay); } catch (Exception ignored) { }
             relayRegistered = false;
         }
+        if (pkgReceiverRegistered) {
+            try { unregisterReceiver(packageChangeReceiver); } catch (Exception ignored) { }
+            pkgReceiverRegistered = false;
+        }
         super.onDestroy();
         Logger.logDebug(LOG_TAG, "onDestroy");
         if (mServiceBound) {
@@ -250,12 +305,40 @@ public class LauncherActivity extends Activity implements ServiceConnection {
         }
     }
 
+    /** 按包名启动（开机自启走这条；网格里走 launchPkg(AppInfo) 以拿到显式 component）。 */
     private void launchPkg(String pkg) {
+        if (allApps != null) {
+            for (AppInfo a : allApps) {
+                if (!a.isTerminal && a.pkg.equals(pkg)) { launchPkg(a); return; }
+            }
+        }
         try {
             Intent i = pm.getLaunchIntentForPackage(pkg);
             if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); }
         } catch (Exception e) {
             Logger.logWarn(LOG_TAG, "Failed to launch " + pkg + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * 用解析阶段拿到的显式 component 启动。
+     *
+     * 不能只依赖 getLaunchIntentForPackage()：它内部是按 CATEGORY_LAUNCHER 查的，
+     * 对只声明 LEANBACK_LAUNCHER 的纯 TV 应用会返回 null，表现为“点了没反应”。
+     */
+    private void launchPkg(AppInfo app) {
+        if (app == null) return;
+        if (app.isTerminal) { openTermuxActivity(); return; }
+        try {
+            Intent i = app.intent != null ? new Intent(app.intent) : pm.getLaunchIntentForPackage(app.pkg);
+            if (i != null) {
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } else {
+                Logger.logWarn(LOG_TAG, "No launch intent for " + app.pkg);
+            }
+        } catch (Exception e) {
+            Logger.logWarn(LOG_TAG, "Failed to launch " + app.pkg + ": " + e.getMessage());
         }
     }
 
@@ -383,7 +466,7 @@ public class LauncherActivity extends Activity implements ServiceConnection {
                 if (pos < shownApps.size()) {
                     AppInfo sel = shownApps.get(pos);
                     if (sel.isTerminal) openTermuxActivity();
-                    else launchPkg(sel.pkg);
+                    else launchPkg(sel);
                 }
                 return;
 
@@ -600,7 +683,7 @@ public class LauncherActivity extends Activity implements ServiceConnection {
                             if (p >= 0 && p < shownApps.size()) {
                                 AppInfo sel = shownApps.get(p);
                                 if (sel.isTerminal) openTermuxActivity();
-                                else launchPkg(sel.pkg);
+                                else launchPkg(sel);
                             }
                         }
                         return true;
@@ -778,21 +861,66 @@ public class LauncherActivity extends Activity implements ServiceConnection {
         return info;
     }
 
+    /**
+     * 收集桌面入口：CATEGORY_LEANBACK_LAUNCHER 优先，再补 CATEGORY_LAUNCHER 里没有的包。
+     *
+     * 两点刻意设计：
+     *  - 同时查两个 category：纯 TV 应用（爱奇艺/当贝/云视听等）只声明 LEANBACK，
+     *    以前只查 LAUNCHER，装上后桌面上根本不出现。
+     *  - 按包名去重：一个应用只出一个图标。同一包里手机版和 TV 版入口并存时优先
+     *    TV 入口（遥控器体验更好）；否则会出现两个同名图标、点哪个都不知道。
+     */
+    private List<ResolveInfo> queryLaunchables() {
+        List<ResolveInfo> out = new ArrayList<>();
+        Set<String> seenPkgs = new HashSet<>();
+        String self = getPackageName();
+        for (String category : new String[] { CATEGORY_LEANBACK, Intent.CATEGORY_LAUNCHER }) {
+            Intent intent = new Intent(Intent.ACTION_MAIN, null);
+            intent.addCategory(category);
+            List<ResolveInfo> resolved;
+            try {
+                resolved = pm.queryIntentActivities(intent, 0);
+            } catch (Exception e) {
+                Logger.logWarn(LOG_TAG, "query " + category + " failed: " + e.getMessage());
+                continue;
+            }
+            if (resolved == null) continue;
+            for (ResolveInfo ri : resolved) {
+                if (ri == null || ri.activityInfo == null) continue;
+                String pkg = ri.activityInfo.packageName;
+                if (pkg == null || pkg.equals(self)) continue;
+                if (!seenPkgs.add(pkg)) continue;
+                out.add(ri);
+            }
+        }
+        return out;
+    }
+
+    /** 包变化后重建网格，尽量把焦点留在原来的位置。 */
+    private void reloadAppsKeepFocus() {
+        if (mainGrid == null || mainAdapter == null) { needReload = true; return; }
+        if (editMode) exitEditMode();
+        int sel = mainGrid.getSelectedItemPosition();
+        loadApps();
+        if (shownApps != null && !shownApps.isEmpty()) {
+            if (sel < 0) sel = 0;
+            mainGrid.setSelection(Math.min(sel, shownApps.size() - 1));
+        }
+        mainGrid.requestFocus();
+    }
+
     private void loadApps() {
         needReload = false;
         allApps = new ArrayList<>();
-        Intent intent = new Intent(Intent.ACTION_MAIN, null);
-        intent.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> resolved = pm.queryIntentActivities(intent, 0);
-        for (ResolveInfo ri : resolved) {
-            if (ri.activityInfo.packageName.equals(getPackageName())) continue;
+        for (ResolveInfo ri : queryLaunchables()) {
             AppInfo info = new AppInfo();
             info.pkg = ri.activityInfo.packageName;
-            info.label = ri.loadLabel(pm).toString();
+            CharSequence label = ri.loadLabel(pm);
+            info.label = label != null ? label.toString() : info.pkg;
             info.icon = ri.loadIcon(pm);
+            if (info.icon == null) info.icon = pm.getDefaultActivityIcon();
             info.intent = new Intent(Intent.ACTION_MAIN);
             info.intent.setComponent(new ComponentName(info.pkg, ri.activityInfo.name));
-            info.intent.addCategory(Intent.CATEGORY_LAUNCHER);
             allApps.add(info);
         }
 
