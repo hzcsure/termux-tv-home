@@ -1,0 +1,31 @@
+// 回归测试用探针：只声明 LEANBACK_LAUNCHER，用来验证 TVHome 桌面
+// 1) 能否发现纯 TV 入口（缺陷 2）
+// 2) 新装包后是否即时刷新（缺陷 3）
+// 不参与任何发布流水线，仅由 .github/workflows/build-probe.yml 构建。
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.hzc.tvprobe'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.hzc.tvprobe'
+        minSdk 21
+        targetSdk 33
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+dependencies {
+    // 纯 framework
+}

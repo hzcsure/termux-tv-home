@@ -1,1 +1,3 @@
 include ':app', ':termux-shared', ':terminal-emulator', ':terminal-view', ':tvdecoy'
+// 仅回归测试用的探针（只声明 LEANBACK_LAUNCHER），不参与发布
+include ':probe'

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:label="Probe"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+        <!-- 刻意只声明 LEANBACK_LAUNCHER，不声明 CATEGORY_LAUNCHER：
+             只有这样，桌面能显示它才说明 LEANBACK 查询真的生效了。 -->
+        <activity
+            android:name=".ProbeActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
