@@ -243,7 +243,7 @@ jobs:
           echo "======================"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.build-release.outputs.a5_tag }}
           name: ${{ needs.build-release.outputs.a5_tag }}
@@ -259,7 +259,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload sha256sums
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.build-release.outputs.a5_tag }}
           files: ./release-assets/*sha256sums
