@@ -109,18 +109,17 @@ jobs:
         run: |
           set -euo pipefail
           OUT="tvdecoy-v${{ steps.ver.outputs.version }}.apk"
-          cp tvdecoy/build/outputs/apk/release/*.apk "dist-$OUT"
-          sha256sum "dist-$OUT" > "dist-$OUT.sha256"
-          cat "dist-$OUT.sha256"
-          echo "apk=dist-$OUT" >> "$GITHUB_OUTPUT"
+          mkdir -p dist
+          cp tvdecoy/build/outputs/apk/release/*.apk "dist/$OUT"
+          ( cd dist && sha256sum "$OUT" > "$OUT.sha256" && cat "$OUT.sha256" )
+          ls -l dist
+          echo "apk=dist/$OUT" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: tvdecoy-v${{ steps.ver.outputs.version }}
-          path: |
-            dist-*.apk
-            dist-*.sha256
+          path: dist/*
           retention-days: 90
 
       - name: Publish GitHub Release
@@ -140,5 +139,5 @@ jobs:
             - minSdk 21 / targetSdk 33，release 变体，debug 密钥签名，可直接 `adb install`
             - 安装后无需额外配置，termux-home 在 `onResume` 后会自动把它拉到栈顶
           files: |
-            dist-*.apk
-            dist-*.sha256
+            dist/*.apk
+            dist/*.sha256
