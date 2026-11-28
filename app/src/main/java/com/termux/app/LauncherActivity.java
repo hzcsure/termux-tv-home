@@ -889,6 +889,9 @@ public class LauncherActivity extends Activity implements ServiceConnection {
                 if (ri == null || ri.activityInfo == null) continue;
                 String pkg = ri.activityInfo.packageName;
                 if (pkg == null || pkg.equals(self)) continue;
+                // 诱饵是内部组件（声明了 LAUNCHER 入口），不该出现在桌面上：
+                // 点它只会得到一个透明窗口，对用户没有任何意义。
+                if (DECOY_PKG.equals(pkg)) continue;
                 if (!seenPkgs.add(pkg)) continue;
                 out.add(ri);
             }
