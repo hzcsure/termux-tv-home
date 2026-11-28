@@ -57,7 +57,10 @@
             android:name=".DecoyService"
             android:exported="true" />
 
-        <!-- 开机 / 解锁 / 亮屏 时自启，把诱饵重新顶到前台 -->
+        <!-- 开机 / 解锁 / 亮屏 时自启，把诱饵重新顶到前台；
+             宿主 com.termux 被覆盖安装 / 卸载时自愈（见 BootReceiver 注释）。
+             PACKAGE_* 广播必须带 data scheme="package" 才收得到，
+             因此单独一个 intent-filter，不和上面三个混在一起。 -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
@@ -65,6 +68,12 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.USER_PRESENT" />
                 <action android:name="android.intent.action.SCREEN_ON" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+                <action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" />
+                <data android:scheme="package" />
             </intent-filter>
         </receiver>
     </application>

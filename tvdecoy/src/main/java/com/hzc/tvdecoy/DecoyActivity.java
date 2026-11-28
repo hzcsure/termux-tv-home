@@ -1,7 +1,10 @@
 package com.hzc.tvdecoy;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
@@ -56,12 +59,31 @@ public class DecoyActivity extends Activity {
     /** 与 TVHome 的 LONG_PRESS(500ms) 保持一致，用于区分“长按开底部栏”。 */
     private static final long LONG_PRESS_MS = 500L;
 
+    /**
+     * 宿主（com.termux）被覆盖安装 / 卸载时由 BootReceiver 发出，诱饵收到后自杀。
+     * 不自杀的后果：宿主进程已死、HomeLauncher 已从栈里消失，但诱饵这层透明窗口
+     * 仍停在栈顶，屏幕只剩黑底 + 日期标签，遥控器按键全被吞掉。
+     */
+    static final String ACTION_HOST_GONE = "com.hzc.tvdecoy.HOST_GONE";
+
     private long mCenterDownTime;
+    private BroadcastReceiver mHostGoneReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_decoy);
+
+        // 常驻注册（onCreate→onDestroy），不用 onResume/onPause 配对：
+        // 安装过程中系统可能把诱饵 paused 一下，那时恰是广播到达的时刻。
+        mHostGoneReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.i(TAG, "host gone, finish self so the desktop can come back");
+                finish();
+            }
+        };
+        registerReceiver(mHostGoneReceiver, new IntentFilter(ACTION_HOST_GONE));
 
         boolean focusable = FOCUSABLE;
         Intent it = getIntent();
@@ -88,6 +110,18 @@ public class DecoyActivity extends Activity {
         }
         getWindow().setAttributes(lp);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (mHostGoneReceiver != null) {
+            try {
+                unregisterReceiver(mHostGoneReceiver);
+            } catch (Exception ignored) {
+            }
+            mHostGoneReceiver = null;
+        }
+        super.onDestroy();
     }
 
     @Override
