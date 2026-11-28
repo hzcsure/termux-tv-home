@@ -137,7 +137,7 @@ jobs:
             > "${{ env.APK_BASENAME_PREFIX }}_sha256sums"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-apks-${{ matrix.package_variant }}
           path: |
