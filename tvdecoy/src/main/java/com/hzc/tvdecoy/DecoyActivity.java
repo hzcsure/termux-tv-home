@@ -8,6 +8,7 @@ import android.content.IntentFilter;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -66,8 +67,29 @@ public class DecoyActivity extends Activity {
      */
     static final String ACTION_HOST_GONE = "com.hzc.tvdecoy.HOST_GONE";
 
+    /**
+     * 本 Activity 最近一次 onResume 的 elapsedRealtime，供 BootReceiver 判断
+     * “宿主刚被升级时，用户正看着桌面” 还是 “用户在看视频/在别的 app 里”。
+     * 只在真正需要自愈（诱饵占着栈顶 = 黑屏风险）时才抢前台。
+     */
+    private static volatile long sLastResumedAt = 0L;
+
+    /** 判定“刚才还在前台”的时间窗。安装 20MB 包在这台盒子上约需 90s，留足余量。 */
+    private static final long RECENT_FOREGROUND_WINDOW_MS = 120_000L;
+
+    static boolean wasRecentlyForeground() {
+        long t = sLastResumedAt;
+        return t != 0L && SystemClock.elapsedRealtime() - t <= RECENT_FOREGROUND_WINDOW_MS;
+    }
+
     private long mCenterDownTime;
     private BroadcastReceiver mHostGoneReceiver;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        sLastResumedAt = SystemClock.elapsedRealtime();
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

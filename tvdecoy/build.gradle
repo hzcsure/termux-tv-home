@@ -26,15 +26,32 @@ android {
         versionName decoyVersionName
     }
 
-    // 用 debug 密钥给 release 变体签名，保证 `./gradlew assembleRelease`（termux 发布时
-    // 会顺带配置本模块）不会因“无签名配置”而失败。个人 TV 助手类 app 足够。
+    // 固定签名。
+    //
+    // 之前 release 用 signingConfigs.debug，而 GitHub runner 每次都是全新的
+    // ~/.android/debug.keystore（密钥材料随机）⇒ 1.0.0 与 1.0.1 签名不同 ⇒
+    // adb install -r 报 INSTALL_FAILED_UPDATE_INCOMPATIBLE，每次升级都得先卸载
+    // （2026-11-28 在 MiBOX3 上实测，证书 sha256 分别是 d5b04605… / 02681e0f…）。
+    //
+    // 改签仓库内自带的 termux 官方测试密钥 app/testkey_untrusted.jks：
+    // 文件跟着 git 走，本机与 CI 得到完全相同的证书，可原地覆盖升级。
+    // 这是"测试密钥"，与 termux 正式发布用的密钥无关，也无对外分发风险。
+    signingConfigs {
+        stable {
+            storeFile file('../app/testkey_untrusted.jks')
+            keyAlias 'alias'
+            storePassword 'xrj45yWGLbsO7W0v'
+            keyPassword 'xrj45yWGLbsO7W0v'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.stable
         }
         debug {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.stable
         }
     }
 }

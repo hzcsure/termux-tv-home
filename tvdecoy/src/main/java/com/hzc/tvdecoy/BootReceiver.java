@@ -4,8 +4,6 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -35,6 +33,12 @@ public class BootReceiver extends BroadcastReceiver {
 
     /** 宿主包名：TVHome 就是改造后的 termux-app。 */
     private static final String HOST_PKG = "com.termux";
+
+    /**
+     * 宿主桌面组件（activity-alias → .app.LauncherActivity，声明 CATEGORY_HOME）。
+     * 必须用别名而不是 .app.LauncherActivity：后者启动即 finish，只负责建 shell。
+     */
+    private static final String HOST_HOME_CLASS = "com.termux.HomeLauncher";
 
     /**
      * 装完到进程落定之间有个空档，立刻抢前台容易和 PMS 的收尾流程打架。
@@ -77,6 +81,15 @@ public class BootReceiver extends BroadcastReceiver {
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
             public void run() {
+                // 0) 只在诱饵刚占着栈顶时才动手。
+                //    诱饵在前台 = 用户正看着桌面，宿主被杀后这层透明窗口会变成
+                //    “黑底 + 日期”的天花板，必须救；
+                //    诱饵不在前台 = 用户在看视频/在别的 app 里升级宿主，不该被抢前台。
+                if (!DecoyActivity.wasRecentlyForeground()) {
+                    Log.i(TAG, "decoy not foreground recently, skip restore");
+                    return;
+                }
+
                 // 1) 让在跑的诱饵自己退出。诱饵没跑时动态接收器不存在，什么都不会发生。
                 try {
                     app.sendBroadcast(new Intent(DecoyActivity.ACTION_HOST_GONE)
@@ -85,23 +98,27 @@ public class BootReceiver extends BroadcastReceiver {
                     Log.w(TAG, "notify decoy failed: " + e.getMessage());
                 }
 
-                // 2) 显式拉起默认桌面。只在默认桌面仍是宿主时才做，
-                //    否则（用户已换回小米桌面 / 宿主被卸载）交给系统处理。
+                // 2) 显式拉起宿主自己的桌面组件。
+                //
+                //    这里刻意【不再】用 resolveActivity(CATEGORY_HOME) 去问“默认桌面是谁”：
+                //    2026-11-28 在 MiBOX3 上实测，这台盒子的默认 HOME 是系统预装的
+                //    com.ayst.linearlauncher（resolve 返回它），于是旧逻辑判定
+                //    “default HOME 不是宿主” 直接放弃，升级 termux 后桌面照样回不来。
+                //    decoy 本来就是 termux-home 的专属配件（HOST_PKG 已写死），
+                //    直接拉宿主自己的别名更可靠：升级完就是要回到这个桌面。
+                ComponentName hostHome = new ComponentName(HOST_PKG, HOST_HOME_CLASS);
+                Intent home = new Intent(Intent.ACTION_MAIN);
+                home.addCategory(Intent.CATEGORY_HOME);
+                home.setComponent(hostHome);
+                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 try {
-                    Intent home = new Intent(Intent.ACTION_MAIN);
-                    home.addCategory(Intent.CATEGORY_HOME);
-                    home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    ResolveInfo ri = app.getPackageManager()
-                            .resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
-                    if (ri == null || ri.activityInfo == null
-                            || !HOST_PKG.equals(ri.activityInfo.packageName)) {
-                        Log.w(TAG, "default HOME is not " + HOST_PKG + ", leave it to system");
+                    // 组件不存在 / 已被禁用（宿主被卸载）时 resoloveActivity 返回 null
+                    if (app.getPackageManager().resolveActivity(home, 0) == null) {
+                        Log.w(TAG, "host home component unavailable, leave it to system");
                         return;
                     }
-                    home.setComponent(new ComponentName(ri.activityInfo.packageName,
-                            ri.activityInfo.name));
                     app.startActivity(home);
-                    Log.i(TAG, "HOME relaunched: " + ri.activityInfo.name);
+                    Log.i(TAG, "HOME relaunched: " + hostHome.flattenToShortString());
                 } catch (Exception e) {
                     Log.w(TAG, "relaunch HOME failed: " + e.getMessage());
                 }

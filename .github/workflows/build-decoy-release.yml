@@ -136,7 +136,8 @@ jobs:
 
             - 包名：`com.hzc.tvdecoy`（必须与 termux-home 独立安装，同包名会使保护失效）
             - 版本：`${{ steps.ver.outputs.version }}`（versionCode `${{ steps.ver.outputs.code }}`）
-            - minSdk 21 / targetSdk 33，release 变体，debug 密钥签名，可直接 `adb install`
+            - minSdk 21 / targetSdk 33，release 变体，用仓库内固定的
+              `app/testkey_untrusted.jks` 签名，可直接 `adb install` 原地覆盖升级
             - 安装后无需额外配置，termux-home 在 `onResume` 后会自动把它拉到栈顶
           files: |
             dist/*.apk
