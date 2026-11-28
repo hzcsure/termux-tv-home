@@ -37,7 +37,7 @@ jobs:
         run: ./gradlew :probe:assembleRelease --no-daemon
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: probe-apk
           path: probe/build/outputs/apk/release/*.apk
